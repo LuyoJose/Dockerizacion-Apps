@@ -1,0 +1,14 @@
+# Dockerfile.mongo
+FROM mongo:7.0-bionic
+
+# Copia configuración si la tienes (mongod.conf)
+COPY mongod.conf /etc/mongod.conf
+
+VOLUME ["/data/db","/data/configdb"]
+
+EXPOSE 27017
+
+HEALTHCHECK --interval=15s --timeout=5s --start-period=10s \
+    CMD mongo --eval "db.adminCommand('ping')" || exit 1
+
+CMD ["mongod", "--config", "/etc/mongod.conf"]

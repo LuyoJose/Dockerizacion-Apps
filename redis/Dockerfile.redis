@@ -1,0 +1,17 @@
+# Dockerfile.redis
+FROM redis:8.2-alpine AS base
+
+# Copia la configuración personalizada (si la tienes)
+# O usa variables de entorno / mounts en producción (recomendado).
+COPY redis.conf /usr/local/etc/redis/redis.conf
+
+# Crea un usuario no-root (si la base lo permite): en redis-official suele ejecutarse como redis
+# Exponer puerto
+EXPOSE 6379
+
+# Healthcheck sencillo
+HEALTHCHECK --interval=15s --timeout=3s --start-period=10s \
+    CMD redis-cli ping || exit 1
+
+# CMD con config file (si tienes uno)
+CMD ["redis-server", "/usr/local/etc/redis/redis.conf"]

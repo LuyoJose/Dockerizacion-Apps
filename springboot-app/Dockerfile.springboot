@@ -1,0 +1,41 @@
+# ==========================
+# Etapa 1: Build
+# ==========================
+FROM eclipse-temurin:21-jdk AS builder
+
+# Carpeta de trabajo
+WORKDIR /app
+
+# Copia el código fuente (en tu caso, si no tienes aún, puedes simular)
+# COPY .mvn/ .mvn
+# COPY mvnw pom.xml ./
+# COPY src ./src
+
+# Si tuvieras Maven:
+# RUN ./mvnw clean package -DskipTests
+
+# Para pruebas sin código, creamos un JAR vacío simulado:
+RUN echo "echo 'Spring Boot mock app running...'" > app.sh && chmod +x app.sh
+
+# ==========================
+# Etapa 2: Runtime
+# ==========================
+FROM eclipse-temurin:21-jre-alpine AS runtime
+
+# Crea un usuario no root (buena práctica)
+RUN addgroup -S spring && adduser -S spring -G spring
+USER spring:spring
+
+WORKDIR /app
+
+# Copiamos el JAR (en caso real) o el script simulado
+COPY --from=builder /app/app.sh /app/app.sh
+# COPY --from=builder /app/target/*.jar app.jar
+
+# Exponemos el puerto que Spring Boot usa por defecto
+EXPOSE 8080
+
+# Comando por defecto (ajusta según si usas JAR o script)
+ENTRYPOINT ["sh", "app.sh"]
+# En producción real sería:
+# ENTRYPOINT ["java", "-jar", "app.jar"]
