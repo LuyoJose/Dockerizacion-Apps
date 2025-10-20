@@ -55,25 +55,31 @@ services:
       - backend
 
   # ⚡ Node + TypeScript
+  # ⚡ Node + TypeScript (CORREGIDO)
   node-app:
-    image: node:lts-slim
-    container_name: node_service
-    restart: always
+    build:
+      context: ./node-app  # 👈 Ahora usa build, no image
+      dockerfile: Dockerfile.node
+    container_name: node_app
+    restart: unless-stopped  # 👈 Cambiado de always
     environment:
       NODE_ENV: production
       DATABASE_URL: "postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-admin123}@postgres:5432/${POSTGRES_DB:-appdb}"
       REDIS_HOST: redis
       REDIS_PORT: 6379
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     ports:
       - "3000:3000"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
-      interval: 20s
-      timeout: 3s
+      interval: 30s
+      timeout: 10s
       retries: 3
+      start_period: 45s
     networks:
       - backend
       - frontend

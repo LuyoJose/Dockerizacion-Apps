@@ -1,0 +1,41 @@
+# Dockerfile.node (versión corregida)
+FROM node:lts-slim AS builder
+WORKDIR /app
+
+# Copia primero los archivos esenciales
+COPY package.json ./
+COPY tsconfig.json ./
+
+# Usa npm install en lugar de npm ci
+RUN npm install
+
+# Copia el código fuente
+COPY src ./src
+
+# Compila TypeScript
+RUN npx tsc
+
+# Stage de producción
+FROM node:lts-slim AS runtime
+WORKDIR /app
+
+# Instala curl para health checks
+RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+
+# Crea usuario no-root
+RUN groupadd -r appuser && useradd -r -g appuser appuser
+
+# Copia artefactos de build
+COPY --from=builder --chown=appuser:appuser /app/dist ./dist
+COPY --from=builder --chown=appuser:appuser /app/package.json ./
+COPY --from=builder --chown=appuser:appuser /app/node_modules ./node_modules
+
+USER appuser
+
+ENV NODE_ENV=production
+EXPOSE 3000
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s \
+    CMD curl -f http://localhost:3000/health || exit 1
+
+CMD ["node", "dist/index.js"]
