@@ -1,17 +1,40 @@
 # ===============================
-# Prometheus (Producción)
+# Prometheus (Producción Segura)
 # ===============================
-FROM prom/prometheus:v2.54.1
+FROM prom/prometheus:v2.54.1 AS runtime
 
+LABEL maintainer="devops@empresa.com" \
+    org.opencontainers.image.title="Prometheus Secure Build" \
+    org.opencontainers.image.version="1.0.0" \
+    org.opencontainers.image.source="https://github.com/empresa/infra/prometheus"
+
+# -------------------------------
+# Crear usuario no-root
+# -------------------------------
+RUN addgroup --system prometheus && adduser --system --ingroup prometheus prometheus
+
+# -------------------------------
+# Configurar permisos y directorios
+# -------------------------------
 WORKDIR /etc/prometheus
+COPY --chown=prometheus:prometheus prometheus.yml /etc/prometheus/prometheus.yml
 
-# Copiar configuración personalizada
-COPY prometheus.yml /etc/prometheus/prometheus.yml
+# Directorios persistentes
+RUN mkdir -p /prometheus && chown -R prometheus:prometheus /prometheus /etc/prometheus
 
-# Crear volumen persistente para métricas
 VOLUME ["/prometheus"]
 
+USER prometheus
+
+# -------------------------------
+# Configuración y salud
+# -------------------------------
 EXPOSE 9090
 
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD wget --spider http://localhost:9090/-/healthy || exit 1
+
 ENTRYPOINT ["/bin/prometheus"]
-CMD ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.path=/prometheus"]
+CMD ["--config.file=/etc/prometheus/prometheus.yml", \
+    "--storage.tsdb.path=/prometheus", \
+    "--web.enable-lifecycle"]

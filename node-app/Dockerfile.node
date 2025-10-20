@@ -1,34 +1,43 @@
-# Dockerfile.node (versión corregida)
+# =========================================
+# Etapa 1: Build con usuario builder
+# =========================================
 FROM node:lts-slim AS builder
-WORKDIR /app
 
-# Copia primero los archivos esenciales
-COPY package.json ./
-COPY tsconfig.json ./
+# Crear usuario no root para compilación
+RUN groupadd -r builder && useradd -r -g builder builder
 
-# Usa npm install en lugar de npm ci
+WORKDIR /home/builder/app
+USER builder
+
+# Copiar archivos necesarios
+COPY --chown=builder:builder package.json tsconfig.json ./
+
+# Instalar dependencias
 RUN npm install
 
-# Copia el código fuente
-COPY src ./src
+# Copiar el código fuente
+COPY --chown=builder:builder src ./src
 
-# Compila TypeScript
+# Compilar TypeScript
 RUN npx tsc
 
-# Stage de producción
+# =========================================
+# Etapa 2: Runtime con usuario appuser
+# =========================================
 FROM node:lts-slim AS runtime
-WORKDIR /app
 
-# Instala curl para health checks
+# Instala utilidades necesarias
 RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
 
-# Crea usuario no-root
+# Crear usuario de producción
 RUN groupadd -r appuser && useradd -r -g appuser appuser
 
-# Copia artefactos de build
-COPY --from=builder --chown=appuser:appuser /app/dist ./dist
-COPY --from=builder --chown=appuser:appuser /app/package.json ./
-COPY --from=builder --chown=appuser:appuser /app/node_modules ./node_modules
+WORKDIR /app
+
+# Copiar artefactos del build con permisos adecuados
+COPY --from=builder --chown=appuser:appuser /home/builder/app/dist ./dist
+COPY --from=builder --chown=appuser:appuser /home/builder/app/package.json ./package.json
+COPY --from=builder --chown=appuser:appuser /home/builder/app/node_modules ./node_modules
 
 USER appuser
 

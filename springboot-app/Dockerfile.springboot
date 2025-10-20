@@ -1,17 +1,26 @@
 # ===============================
-# Etapa 1: Build con Maven
+# Etapa 1: Build con Maven (usuario builder)
 # ===============================
 FROM maven:3.9-eclipse-temurin-21 AS builder
-WORKDIR /app
-COPY pom.xml ./
-COPY .mvn .mvn
-COPY mvnw .
-RUN mvn dependency:go-offline -B
-COPY src ./src
-RUN mvn clean package -DskipTests
+
+# Crear usuario de build no-root
+RUN addgroup --system builder && adduser --system --ingroup builder builder
+
+USER builder
+
+WORKDIR /home/builder/app
+
+# Copiar archivos con permisos adecuados
+COPY --chown=builder:builder pom.xml ./
+COPY --chown=builder:builder .mvn .mvn
+COPY --chown=builder:builder mvnw .
+RUN ./mvnw dependency:go-offline -B
+
+COPY --chown=builder:builder src ./src
+RUN ./mvnw clean package -DskipTests
 
 # ===============================
-# Etapa 2: Runtime optimizado
+# Etapa 2: Runtime optimizado (usuario spring)
 # ===============================
 FROM eclipse-temurin:21-jre-alpine
 
@@ -24,11 +33,15 @@ RUN apk add --no-cache tzdata curl \
 ENV TZ=America/Mexico_City
 ENV JAVA_OPTS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0"
 
+# Crear usuario para entorno de ejecución
 RUN addgroup -S spring && adduser -S spring -G spring
-USER spring:spring
 
 WORKDIR /app
-COPY --from=builder --chown=spring:spring /app/target/*.jar app.jar
+
+# Copiar artefacto compilado con los permisos adecuados
+COPY --from=builder --chown=spring:spring /home/builder/app/target/*.jar app.jar
+
+USER spring:spring
 
 EXPOSE 8080
 ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]
