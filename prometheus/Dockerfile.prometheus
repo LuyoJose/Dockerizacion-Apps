@@ -1,0 +1,17 @@
+# ===============================
+# Prometheus (Producción)
+# ===============================
+FROM prom/prometheus:v2.54.1
+
+WORKDIR /etc/prometheus
+
+# Copiar configuración personalizada
+COPY prometheus.yml /etc/prometheus/prometheus.yml
+
+# Crear volumen persistente para métricas
+VOLUME ["/prometheus"]
+
+EXPOSE 9090
+
+ENTRYPOINT ["/bin/prometheus"]
+CMD ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.path=/prometheus"]

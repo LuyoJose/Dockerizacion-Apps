@@ -1,0 +1,26 @@
+# ===============================
+# Grafana (Producción)
+# ===============================
+FROM grafana/grafana-oss:11.2.0
+
+# Configurar variables de entorno seguras
+ENV GF_SECURITY_ADMIN_USER=admin \
+    GF_SECURITY_ADMIN_PASSWORD=admin123 \
+    GF_USERS_ALLOW_SIGN_UP=false \
+    GF_AUTH_ANONYMOUS_ENABLED=false \
+    GF_PATHS_PROVISIONING=/etc/grafana/provisioning \
+    GF_PATHS_PLUGINS=/var/lib/grafana/plugins \
+    GF_PATHS_DATA=/var/lib/grafana/data \
+    GF_LOG_MODE=console \
+    GF_SECURITY_COOKIE_SAMESITE=strict
+
+# Crear volumen persistente
+VOLUME ["/var/lib/grafana"]
+
+# Exponer puerto estándar
+EXPOSE 3001
+
+# Usuario no-root (ya viene preconfigurado en la imagen base)
+USER grafana
+
+ENTRYPOINT ["/run.sh"]
