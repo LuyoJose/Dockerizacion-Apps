@@ -1,59 +1,45 @@
 # ===============================
-# Etapa 1: Build del Node.js app
+# Etapa 1: Build de la app Spring Boot
 # ===============================
-FROM node:22-alpine AS builder
+FROM eclipse-temurin:21-jdk AS builder
 
-# Crear usuario no root para el build
-RUN addgroup -S builder && adduser -S builder -G builder
+# Crear usuario no root para compilar (sintaxis para Debian)
+RUN groupadd -r builder && useradd -r -g builder builder
 USER builder
 
-# Definir directorio de trabajo
 WORKDIR /home/builder/app
 
-# Copiar archivos de dependencias (solo los que existan)
-COPY --chown=builder:builder package*.json ./
+# Copiar archivos necesarios para resolver dependencias
+COPY --chown=builder:builder mvnw pom.xml ./
+COPY --chown=builder:builder .mvn/ .mvn/
+RUN ./mvnw dependency:go-offline -B
 
-# Crear y asignar permisos al cache de npm
-RUN mkdir -p /home/builder/.npm && chown -R builder:builder /home/builder/.npm
-
-# Configurar variable de entorno para npm
-ENV NPM_CONFIG_CACHE=/home/builder/.npm
-ENV NODE_ENV=production
-
-# Instalar dependencias de producción
-RUN npm ci --omit=dev --no-audit --no-fund
-
-# Copiar el resto del código fuente
-COPY --chown=builder:builder . .
-
-# Compilar (si tu proyecto tiene build, por ejemplo NestJS o TS)
-RUN npm run build
+# Copiar el código fuente y compilar
+COPY --chown=builder:builder src ./src
+RUN ./mvnw clean package -DskipTests
 
 # ===============================
 # Etapa 2: Runtime optimizado
 # ===============================
-FROM node:22-alpine AS runtime
+FROM eclipse-temurin:21-jre AS runtime
 
-# Instalar dependencias mínimas necesarias
-RUN apk add --no-cache tini
-
-# Crear usuario no root para ejecución
-RUN addgroup -S app && adduser -S app -G app
+# Crear usuario no root para ejecución (también versión Debian)
+RUN groupadd -r app && useradd -r -g app app
 USER app
 
-# Definir directorio de trabajo
 WORKDIR /app
 
-# Copiar solo los archivos necesarios desde la etapa de build
-COPY --from=builder --chown=app:app /home/builder/app/dist ./dist
-COPY --from=builder --chown=app:app /home/builder/app/node_modules ./node_modules
-COPY --from=builder --chown=app:app /home/builder/app/package*.json ./
+# Copiar solo el artefacto final desde el builder
+COPY --from=builder --chown=app:app /home/builder/app/target/*.jar app.jar
 
 # Configurar entorno
-ENV NODE_ENV=production
-ENV PORT=3000
+ENV JAVA_OPTS="-Xms256m -Xmx512m"
+ENV SPRING_PROFILES_ACTIVE=prod
 
-# Exponer puerto y definir proceso principal
-EXPOSE 3000
-ENTRYPOINT ["/sbin/tini", "--"]
-CMD ["node", "dist/main.js"]
+# Healthcheck básico
+HEALTHCHECK --interval=15s --timeout=3s --start-period=10s \
+    CMD curl -f http://localhost:8080/actuator/health || exit 1
+
+EXPOSE 8080
+
+ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]

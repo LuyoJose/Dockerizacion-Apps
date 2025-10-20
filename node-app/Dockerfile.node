@@ -1,59 +1,90 @@
-# ===============================
-# Etapa 1: Build del Node.js app
-# ===============================
+# ======================================================
+# 🏗️ Etapa 1: Build del Node.js app (segura y reproducible)
+# ======================================================
 FROM node:22-alpine AS builder
 
-# Crear usuario no root para el build
+# 1️⃣ Crear usuario no-root para el build
 RUN addgroup -S builder && adduser -S builder -G builder
 
-# Definir directorio de trabajo
+# 2️⃣ Preparar directorios con permisos correctos
+RUN mkdir -p /home/builder/app /home/builder/.npm \
+    && chown -R builder:builder /home/builder
+
+# 3️⃣ Cambiar a usuario seguro
+USER builder
 WORKDIR /home/builder/app
 
-# Copiar archivos de dependencias
-COPY package*.json ./
-
-# Crear cache de npm y dar permisos
-RUN mkdir -p /home/builder/.npm && chown -R builder:builder /home/builder
-
-# Configurar entorno npm
+# 4️⃣ Configurar caché npm aislado
 ENV NPM_CONFIG_CACHE=/home/builder/.npm
-ENV NODE_ENV=production
 
-# Cambiar a usuario seguro
-USER builder
+# 5️⃣ Copiar solo dependencias primero (para cache)
+COPY --chown=builder:builder package*.json ./
 
-# Limpiar posibles permisos viejos y reinstalar
-RUN npm cache clean --force || true
-
-# Instalar dependencias sin auditorías
+# 6️⃣ Instalar dependencias de producción (reproducible)
 RUN npm ci --omit=dev --no-audit --no-fund
 
-# Copiar el resto del código y compilar
+# 7️⃣ Copiar el resto del código fuente
 COPY --chown=builder:builder . .
+
+# 8️⃣ Compilar la aplicación (por ejemplo: NestJS, Next.js, etc.)
 RUN npm run build
 
-# ===============================
-# Etapa 2: Runtime optimizado
-# ===============================
+# 9️⃣ (Opcional) Generar checksum para verificación posterior
+RUN sha256sum package-lock.json > checksums.txt
+
+
+# ======================================================
+# 🚀 Etapa 2: Runtime optimizado y seguro
+# ======================================================
 FROM node:22-alpine AS runtime
+# 👇 Si quieres más seguridad aún, puedes cambiar a distroless:
+# FROM gcr.io/distroless/nodejs22 AS runtime
 
-RUN apk add --no-cache tini
+# 10️⃣ Instalar tini para manejo correcto de señales
+RUN apk add --no-cache tini curl wget
 
-# Crear usuario no root para ejecución
+# 11️⃣ Crear usuario no root para ejecución
 RUN addgroup -S app && adduser -S app -G app
 
+# 12️⃣ Directorio limpio de ejecución
 WORKDIR /app
 
-# Copiar los artefactos del build
+# 13️⃣ Copiar solo lo esencial del build
 COPY --from=builder --chown=app:app /home/builder/app/dist ./dist
 COPY --from=builder --chown=app:app /home/builder/app/node_modules ./node_modules
 COPY --from=builder --chown=app:app /home/builder/app/package*.json ./
+COPY --from=builder --chown=app:app /home/builder/app/checksums.txt ./
 
-ENV NODE_ENV=production
-ENV PORT=3000
+# 14️⃣ Verificación opcional de integridad
+RUN sha256sum -c checksums.txt || { echo "Checksum verification failed!"; exit 1; }
 
+# 15️⃣ Endurecer permisos de ejecución
+RUN chmod -R 550 /app
+
+# 16️⃣ Configuración de entorno segura
+ENV NODE_ENV=production \
+    PORT=3000 \
+    TZ=America/Lima \
+    NODE_OPTIONS="--max-old-space-size=512 --enable-source-maps"
+
+# 🔒 Ejecutar siempre como usuario no-root
 USER app
 
+# 17️⃣ Exponer puerto
 EXPOSE 3000
+
+# 18️⃣ HEALTHCHECK (verifica cada 30s si el servicio está activo)
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD wget -qO- http://localhost:3000/health || exit 1
+
+# 19️⃣ Arranque con tini
 ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["node", "dist/main.js"]
+
+# 20️⃣ Metadata estándar (para trazabilidad y observabilidad)
+LABEL org.opencontainers.image.title="My Node.js App" \
+    org.opencontainers.image.version="1.0.0" \
+    org.opencontainers.image.authors="tucorreo@empresa.com" \
+    org.opencontainers.image.description="Aplicación Node.js productiva y segura" \
+    org.opencontainers.image.vendor="TuEmpresa" \
+    org.opencontainers.image.licenses="MIT"

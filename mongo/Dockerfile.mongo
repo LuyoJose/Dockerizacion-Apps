@@ -1,14 +1,24 @@
 # Dockerfile.mongo
 FROM mongo:7.0-bionic
 
-# Copia configuración si la tienes (mongod.conf)
+# Copia configuración personalizada si existe
 COPY mongod.conf /etc/mongod.conf
 
-VOLUME ["/data/db","/data/configdb"]
+# Ajusta permisos (importante si copias archivos como root)
+RUN chown mongodb:mongodb /etc/mongod.conf
 
+# Volúmenes para datos y configuraciones
+VOLUME ["/data/db", "/data/configdb"]
+
+# Puerto por defecto
 EXPOSE 27017
 
+# Healthcheck para verificar disponibilidad
 HEALTHCHECK --interval=15s --timeout=5s --start-period=10s \
-    CMD mongo --eval "db.adminCommand('ping')" || exit 1
+    CMD mongo --quiet --eval "db.adminCommand('ping').ok" || exit 1
 
+# Ejecutar como usuario no-root (ya existe en la base)
+USER mongodb
+
+# Comando de arranque
 CMD ["mongod", "--config", "/etc/mongod.conf"]

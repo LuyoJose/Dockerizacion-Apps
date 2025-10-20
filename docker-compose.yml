@@ -5,7 +5,8 @@ services:
   redis:
     image: redis:8.2-alpine
     container_name: redis_service
-    restart: always
+    restart: unless-stopped
+    read_only: true
     ports:
       - "6379:6379"
     volumes:
@@ -15,6 +16,16 @@ services:
       interval: 15s
       timeout: 3s
       retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     networks:
       - backend
 
@@ -22,18 +33,34 @@ services:
   postgres:
     image: postgres:15-alpine
     container_name: postgres_service
-    restart: always
-    env_file:
-      - .env
+    restart: unless-stopped
+    read_only: true
+    secrets:
+      - db_user
+      - db_password
+    environment:
+      POSTGRES_USER_FILE: /run/secrets/db_user
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+      POSTGRES_DB: appdb
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d appdb"]
       interval: 15s
       timeout: 5s
       retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     networks:
       - backend
 
@@ -41,16 +68,27 @@ services:
   mongo:
     image: mongo:7.0
     container_name: mongo_service
-    restart: always
+    restart: unless-stopped
+    read_only: true
     ports:
       - "27017:27017"
     volumes:
       - mongo_data:/data/db
     healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
       interval: 15s
       timeout: 5s
       retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     networks:
       - backend
 
@@ -61,10 +99,13 @@ services:
       dockerfile: Dockerfile.node
     container_name: node_app
     restart: unless-stopped
-    env_file:
-      - .env
+    read_only: true
+    secrets:
+      - db_user
+      - db_password
     environment:
-      DATABASE_URL: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}"
+      NODE_ENV: production
+      DATABASE_URL: "postgresql://$(cat /run/secrets/db_user):$(cat /run/secrets/db_password)@postgres:5432/appdb"
       REDIS_HOST: redis
       REDIS_PORT: 6379
     depends_on:
@@ -80,6 +121,16 @@ services:
       timeout: 10s
       retries: 3
       start_period: 45s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     networks:
       - backend
       - frontend
@@ -91,12 +142,15 @@ services:
       dockerfile: Dockerfile.springboot
     container_name: springboot_service
     restart: unless-stopped
-    env_file:
-      - .env
+    read_only: true
+    secrets:
+      - db_user
+      - db_password
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
-      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
-      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+      SPRING_PROFILES_ACTIVE: prod
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/appdb
+      SPRING_DATASOURCE_USERNAME_FILE: /run/secrets/db_user
+      SPRING_DATASOURCE_PASSWORD_FILE: /run/secrets/db_password
       SPRING_REDIS_HOST: redis
       SPRING_MONGO_URI: mongodb://mongo:27017/app
       JAVA_OPTS: "-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -Xmx512m"
@@ -115,6 +169,16 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1G
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     networks:
       - backend
       - frontend
@@ -127,10 +191,11 @@ services:
       dockerfile: Dockerfile.prometheus
     container_name: prometheus_service
     restart: unless-stopped
+    read_only: true
     ports:
       - "9090:9090"
     volumes:
-      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
@@ -147,10 +212,9 @@ services:
       dockerfile: Dockerfile.grafana
     container_name: grafana_service
     restart: unless-stopped
+    read_only: true
     ports:
       - "3010:3000"
-    env_file:
-      - .env
     volumes:
       - grafana_data:/var/lib/grafana
     depends_on:
@@ -163,11 +227,27 @@ services:
     networks:
       - monitoring
 
+  # 🔁 Watchtower (auto-updates)
+  watchtower:
+    image: containrrr/watchtower
+    container_name: watchtower
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      WATCHTOWER_CLEANUP: "true"
+      WATCHTOWER_LABEL_ENABLE: "true"
+      WATCHTOWER_SCHEDULE: "0 0 * * *" # Ejecuta cada medianoche
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+
 # 🔗 Redes
 networks:
   backend:
+    internal: true
   frontend:
   monitoring:
+    internal: true
 
 # 💾 Volúmenes
 volumes:
@@ -176,3 +256,10 @@ volumes:
   mongo_data:
   prometheus_data:
   grafana_data:
+
+# 🔐 Secretos
+secrets:
+  db_user:
+    file: ./secrets/db_user.txt
+  db_password:
+    file: ./secrets/db_password.txt
