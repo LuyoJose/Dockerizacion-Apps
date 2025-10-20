@@ -80,37 +80,39 @@ services:
 
   # ☕ Spring Boot (Java)
   springboot-app:
-    image: maven:3.9-eclipse-temurin-17
+    build: 
+      context: ./springboot-app  # 👈 Busca el Dockerfile en la raíz
+      dockerfile: Dockerfile.springboot
     container_name: springboot_service
-    restart: always
+    restart: unless-stopped
     environment:
       SPRING_PROFILES_ACTIVE: prod
-      SPRING_DATASOURCE_URL: "jdbc:postgresql://postgres:5432/${POSTGRES_DB:-appdb}"
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-appdb}
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-admin}
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-admin123}
       SPRING_REDIS_HOST: redis
-      SPRING_MONGO_URI: "mongodb://mongo:27017/app"
+      SPRING_MONGO_URI: mongodb://mongo:27017/app
+      JAVA_OPTS: "-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -Xmx512m"
     depends_on:
-      - postgres
-      - mongo
-      - redis
+      postgres:
+        condition: service_healthy
+      mongo:
+        condition: service_started
+      redis:
+        condition: service_started
     ports:
       - "8080:8080"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
-      interval: 20s
-      timeout: 3s
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 10s
       retries: 3
+      start_period: 60s
     networks:
       - backend
       - frontend
 
-# Volúmenes persistentes
-volumes:
-  redis_data:
-  postgres_data:
-  mongo_data:
-
+# ✅ Solo un bloque de redes
 networks:
   backend:
     name: backend
@@ -118,3 +120,9 @@ networks:
   frontend:
     name: frontend
     driver: bridge
+
+# ✅ Volúmenes persistentes
+volumes:
+  redis_data:
+  postgres_data:
+  mongo_data:

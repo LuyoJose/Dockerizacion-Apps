@@ -1,41 +1,34 @@
-# ==========================
-# Etapa 1: Build
-# ==========================
-FROM eclipse-temurin:21-jdk AS builder
-
-# Carpeta de trabajo
+# ===============================
+# Etapa 1: Build con Maven
+# ===============================
+FROM maven:3.9-eclipse-temurin-21 AS builder
 WORKDIR /app
+COPY pom.xml ./
+COPY .mvn .mvn
+COPY mvnw .
+RUN mvn dependency:go-offline -B
+COPY src ./src
+RUN mvn clean package -DskipTests
 
-# Copia el código fuente (en tu caso, si no tienes aún, puedes simular)
-# COPY .mvn/ .mvn
-# COPY mvnw pom.xml ./
-# COPY src ./src
+# ===============================
+# Etapa 2: Runtime optimizado
+# ===============================
+FROM eclipse-temurin:21-jre-alpine
 
-# Si tuvieras Maven:
-# RUN ./mvnw clean package -DskipTests
+LABEL maintainer="tucorreo@empresa.com"
+LABEL org.opencontainers.image.version="1.0.0"
 
-# Para pruebas sin código, creamos un JAR vacío simulado:
-RUN echo "echo 'Spring Boot mock app running...'" > app.sh && chmod +x app.sh
+RUN apk add --no-cache tzdata curl \
+    && rm -rf /var/cache/apk/*
 
-# ==========================
-# Etapa 2: Runtime
-# ==========================
-FROM eclipse-temurin:21-jre-alpine AS runtime
+ENV TZ=America/Mexico_City
+ENV JAVA_OPTS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0"
 
-# Crea un usuario no root (buena práctica)
 RUN addgroup -S spring && adduser -S spring -G spring
 USER spring:spring
 
 WORKDIR /app
+COPY --from=builder --chown=spring:spring /app/target/*.jar app.jar
 
-# Copiamos el JAR (en caso real) o el script simulado
-COPY --from=builder /app/app.sh /app/app.sh
-# COPY --from=builder /app/target/*.jar app.jar
-
-# Exponemos el puerto que Spring Boot usa por defecto
 EXPOSE 8080
-
-# Comando por defecto (ajusta según si usas JAR o script)
-ENTRYPOINT ["sh", "app.sh"]
-# En producción real sería:
-# ENTRYPOINT ["java", "-jar", "app.jar"]
+ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]

@@ -1,0 +1,13 @@
+# Ignorar estos archivos
+.git
+**/target/
+**/build/
+**/.gradle/
+**/.mvn/wrapper/
+**/mvnw
+**/*.iml
+**/.idea
+**/*.log
+README.md
+Dockerfile
+docker-compose.yml
