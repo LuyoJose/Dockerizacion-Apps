@@ -12,7 +12,7 @@ services:
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "-u", "redis://appuser:AppUserPass123@localhost:6379", "ping"]
       interval: 15s
       timeout: 3s
       retries: 3
@@ -31,23 +31,20 @@ services:
 
   # 🗄️ PostgreSQL
   postgres:
-    image: postgres:15-alpine
+    image: postgres:16-alpine
     container_name: postgres_service
     restart: unless-stopped
     read_only: true
-    secrets:
-      - db_user
-      - db_password
     environment:
-      POSTGRES_USER_FILE: /run/secrets/db_user
-      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+      POSTGRES_USER: appuser
+      POSTGRES_PASSWORD: AppUserPass123
       POSTGRES_DB: appdb
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d appdb"]
+      test: ["CMD-SHELL", "pg_isready -U appuser -d appdb"]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -75,7 +72,7 @@ services:
     volumes:
       - mongo_data:/data/db
     healthcheck:
-      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      test: ["CMD", "mongosh", "-u", "appuser", "-p", "AppUserPass123", "--authenticationDatabase", "appdb", "--quiet", "--eval", "db.adminCommand('ping')"]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -92,7 +89,7 @@ services:
     networks:
       - backend
 
-  # ⚡ Node.js API
+  # 🔗 Node.js API
   node-app:
     build:
       context: ./node-app
@@ -100,12 +97,9 @@ services:
     container_name: node_app
     restart: unless-stopped
     read_only: true
-    secrets:
-      - db_user
-      - db_password
     environment:
       NODE_ENV: production
-      DATABASE_URL: "postgresql://$(cat /run/secrets/db_user):$(cat /run/secrets/db_password)@postgres:5432/appdb"
+      DATABASE_URL: "postgresql://appuser:AppUserPass123@postgres:5432/appdb"
       REDIS_HOST: redis
       REDIS_PORT: 6379
     depends_on:
@@ -135,7 +129,7 @@ services:
       - backend
       - frontend
 
-  # ☕ Spring Boot
+  # 🍃 Spring Boot
   springboot-app:
     build:
       context: ./springboot-app
@@ -143,24 +137,21 @@ services:
     container_name: springboot_service
     restart: unless-stopped
     read_only: true
-    secrets:
-      - db_user
-      - db_password
     environment:
       SPRING_PROFILES_ACTIVE: prod
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/appdb
-      SPRING_DATASOURCE_USERNAME_FILE: /run/secrets/db_user
-      SPRING_DATASOURCE_PASSWORD_FILE: /run/secrets/db_password
+      SPRING_DATASOURCE_USERNAME: appuser
+      SPRING_DATASOURCE_PASSWORD: AppUserPass123
       SPRING_REDIS_HOST: redis
-      SPRING_MONGO_URI: mongodb://mongo:27017/app
+      SPRING_MONGO_URI: mongodb://appuser:AppUserPass123@mongo:27017/appdb
       JAVA_OPTS: "-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -Xmx512m"
     depends_on:
       postgres:
         condition: service_healthy
       mongo:
-        condition: service_started
+        condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
     ports:
       - "8080:8080"
     healthcheck:
@@ -184,63 +175,6 @@ services:
       - frontend
       - monitoring
 
-  # 📊 Prometheus
-  prometheus:
-    build:
-      context: ./prometheus
-      dockerfile: Dockerfile.prometheus
-    container_name: prometheus_service
-    restart: unless-stopped
-    read_only: true
-    ports:
-      - "9090:9090"
-    volumes:
-      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - prometheus_data:/prometheus
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-    networks:
-      - monitoring
-
-  # 📈 Grafana
-  grafana:
-    build:
-      context: ./grafana
-      dockerfile: Dockerfile.grafana
-    container_name: grafana_service
-    restart: unless-stopped
-    read_only: true
-    ports:
-      - "3010:3000"
-    volumes:
-      - grafana_data:/var/lib/grafana
-    depends_on:
-      - prometheus
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-    networks:
-      - monitoring
-
-  # 🔁 Watchtower (auto-updates)
-  watchtower:
-    image: containrrr/watchtower
-    container_name: watchtower
-    restart: unless-stopped
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    environment:
-      WATCHTOWER_CLEANUP: "true"
-      WATCHTOWER_LABEL_ENABLE: "true"
-      WATCHTOWER_SCHEDULE: "0 0 * * *" # Ejecuta cada medianoche
-    labels:
-      - "com.centurylinklabs.watchtower.enable=true"
-
 # 🔗 Redes
 networks:
   backend:
@@ -256,10 +190,3 @@ volumes:
   mongo_data:
   prometheus_data:
   grafana_data:
-
-# 🔐 Secretos
-secrets:
-  db_user:
-    file: ./secrets/db_user.txt
-  db_password:
-    file: ./secrets/db_password.txt

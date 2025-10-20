@@ -1,16 +1,16 @@
 # Dockerfile.postgres
-FROM postgres:15-alpine
+FROM postgres:16-alpine
 
-# Variables de entorno seguras (no poner contraseñas reales aquí)
-ENV POSTGRES_INITDB_WALDIR=/var/lib/postgresql/data/pgdata
+# Usuario y base de datos seguros
+ENV POSTGRES_USER=appuser
+ENV POSTGRES_PASSWORD=AppUserPass123
+ENV POSTGRES_DB=appdb
 
-# Copia scripts de inicialización si existen
-COPY ./docker-entrypoint-initdb.d /docker-entrypoint-initdb.d
+# Copia configuración y scripts
+#COPY ./docker-entrypoint-initdb.d /docker-entrypoint-initdb.d
+#COPY ./postgresql.conf /etc/postgresql/postgresql.conf
 
-# Copia configuración personalizada (opcional)
-COPY ./postgresql.conf /etc/postgresql/postgresql.conf
-
-# Asegurar permisos correctos (solo si cambiaste archivos)
+# Ajusta permisos
 RUN chown -R postgres:postgres /docker-entrypoint-initdb.d /etc/postgresql
 
 # Volumen persistente
@@ -19,13 +19,13 @@ VOLUME ["/var/lib/postgresql/data"]
 # Puerto por defecto
 EXPOSE 5432
 
-# Healthcheck para monitoreo
+# Healthcheck con autenticación
 HEALTHCHECK --interval=15s --timeout=3s --start-period=10s \
-    CMD pg_isready -U $POSTGRES_USER -d $POSTGRES_DB || exit 1
+    CMD pg_isready -U appuser -d appdb || exit 1
 
 # Ejecutar como usuario no root
 USER postgres
 
-# Usa el entrypoint oficial
+# Entry point oficial
 ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["postgres"]
