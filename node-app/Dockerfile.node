@@ -1,50 +1,59 @@
-# =========================================
-# Etapa 1: Build con usuario builder
-# =========================================
-FROM node:lts-slim AS builder
+# ===============================
+# Etapa 1: Build del Node.js app
+# ===============================
+FROM node:22-alpine AS builder
 
-# Crear usuario no root para compilación
-RUN groupadd -r builder && useradd -r -g builder builder
+# Crear usuario no root para el build
+RUN addgroup -S builder && adduser -S builder -G builder
 
+# Definir directorio de trabajo
 WORKDIR /home/builder/app
+
+# Copiar archivos de dependencias
+COPY package*.json ./
+
+# Crear cache de npm y dar permisos
+RUN mkdir -p /home/builder/.npm && chown -R builder:builder /home/builder
+
+# Configurar entorno npm
+ENV NPM_CONFIG_CACHE=/home/builder/.npm
+ENV NODE_ENV=production
+
+# Cambiar a usuario seguro
 USER builder
 
-# Copiar archivos necesarios
-COPY --chown=builder:builder package.json tsconfig.json ./
+# Limpiar posibles permisos viejos y reinstalar
+RUN npm cache clean --force || true
 
-# Instalar dependencias
-RUN npm install
+# Instalar dependencias sin auditorías
+RUN npm ci --omit=dev --no-audit --no-fund
 
-# Copiar el código fuente
-COPY --chown=builder:builder src ./src
+# Copiar el resto del código y compilar
+COPY --chown=builder:builder . .
+RUN npm run build
 
-# Compilar TypeScript
-RUN npx tsc
+# ===============================
+# Etapa 2: Runtime optimizado
+# ===============================
+FROM node:22-alpine AS runtime
 
-# =========================================
-# Etapa 2: Runtime con usuario appuser
-# =========================================
-FROM node:lts-slim AS runtime
+RUN apk add --no-cache tini
 
-# Instala utilidades necesarias
-RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
-
-# Crear usuario de producción
-RUN groupadd -r appuser && useradd -r -g appuser appuser
+# Crear usuario no root para ejecución
+RUN addgroup -S app && adduser -S app -G app
 
 WORKDIR /app
 
-# Copiar artefactos del build con permisos adecuados
-COPY --from=builder --chown=appuser:appuser /home/builder/app/dist ./dist
-COPY --from=builder --chown=appuser:appuser /home/builder/app/package.json ./package.json
-COPY --from=builder --chown=appuser:appuser /home/builder/app/node_modules ./node_modules
-
-USER appuser
+# Copiar los artefactos del build
+COPY --from=builder --chown=app:app /home/builder/app/dist ./dist
+COPY --from=builder --chown=app:app /home/builder/app/node_modules ./node_modules
+COPY --from=builder --chown=app:app /home/builder/app/package*.json ./
 
 ENV NODE_ENV=production
+ENV PORT=3000
+
+USER app
+
 EXPOSE 3000
-
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s \
-    CMD curl -f http://localhost:3000/health || exit 1
-
-CMD ["node", "dist/index.js"]
+ENTRYPOINT ["/sbin/tini", "--"]
+CMD ["node", "dist/main.js"]

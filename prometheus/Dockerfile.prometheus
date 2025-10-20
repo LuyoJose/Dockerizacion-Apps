@@ -1,40 +1,27 @@
 # ===============================
-# Prometheus (Producción Segura)
+# Prometheus (Producción)
 # ===============================
-FROM prom/prometheus:v2.54.1 AS runtime
+FROM prom/prometheus:v2.54.1
 
-LABEL maintainer="devops@empresa.com" \
-    org.opencontainers.image.title="Prometheus Secure Build" \
-    org.opencontainers.image.version="1.0.0" \
-    org.opencontainers.image.source="https://github.com/empresa/infra/prometheus"
-
-# -------------------------------
-# Crear usuario no-root
-# -------------------------------
-RUN addgroup --system prometheus && adduser --system --ingroup prometheus prometheus
-
-# -------------------------------
-# Configurar permisos y directorios
-# -------------------------------
+# Establecer el directorio de trabajo
 WORKDIR /etc/prometheus
-COPY --chown=prometheus:prometheus prometheus.yml /etc/prometheus/prometheus.yml
 
-# Directorios persistentes
-RUN mkdir -p /prometheus && chown -R prometheus:prometheus /prometheus /etc/prometheus
+# Copiar configuración personalizada
+COPY prometheus.yml /etc/prometheus/prometheus.yml
 
+# Asegurar permisos correctos sobre los directorios
+# (solo si el usuario actual tiene acceso)
+RUN chown -R nobody:nogroup /etc/prometheus || true \
+    && chown -R nobody:nogroup /prometheus || true
+
+# Crear volumen persistente para métricas
 VOLUME ["/prometheus"]
 
-USER prometheus
-
-# -------------------------------
-# Configuración y salud
-# -------------------------------
+# Exponer puerto estándar
 EXPOSE 9090
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-    CMD wget --spider http://localhost:9090/-/healthy || exit 1
+# Ejecutar como usuario seguro por defecto
+USER nobody
 
 ENTRYPOINT ["/bin/prometheus"]
-CMD ["--config.file=/etc/prometheus/prometheus.yml", \
-    "--storage.tsdb.path=/prometheus", \
-    "--web.enable-lifecycle"]
+CMD ["--config.file=/etc/prometheus/prometheus.yml","--storage.tsdb.path=/prometheus","--web.enable-lifecycle"]

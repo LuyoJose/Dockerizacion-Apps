@@ -1,44 +1,20 @@
-# ===============================
-# Grafana (Producción Segura)
-# ===============================
-FROM grafana/grafana-oss:11.2.0 AS runtime
+FROM grafana/grafana-oss:11.2.0
+LABEL maintainer="infra@empresa.com"
+LABEL org.opencontainers.image.title="Grafana Observability"
+LABEL org.opencontainers.image.version="1.0.0"
 
-# -------------------------------
-# Metadatos y seguridad
-# -------------------------------
-LABEL maintainer="devops@empresa.com" \
-    org.opencontainers.image.title="Grafana Secure Build" \
-    org.opencontainers.image.version="1.0.0" \
-    org.opencontainers.image.source="https://github.com/empresa/infra/grafana"
-
-# -------------------------------
-# Configuración por variables de entorno
-# (Nunca hardcodear credenciales)
-# -------------------------------
 ENV GF_SECURITY_ADMIN_USER=${GF_SECURITY_ADMIN_USER:-admin} \
-    GF_SECURITY_ADMIN_PASSWORD=${GF_SECURITY_ADMIN_PASSWORD:-change_me_now!} \
+    GF_SECURITY_ADMIN_PASSWORD=${GF_SECURITY_ADMIN_PASSWORD:-admin123} \
     GF_USERS_ALLOW_SIGN_UP=false \
     GF_AUTH_ANONYMOUS_ENABLED=false \
-    GF_PATHS_PROVISIONING=/etc/grafana/provisioning \
-    GF_PATHS_PLUGINS=/var/lib/grafana/plugins \
-    GF_PATHS_DATA=/var/lib/grafana/data \
     GF_SECURITY_COOKIE_SAMESITE=strict \
     GF_LOG_MODE=console
 
-# -------------------------------
-# Volúmenes persistentes
-# -------------------------------
-VOLUME ["/var/lib/grafana"]
-
-# -------------------------------
-# Seguridad de entorno
-# -------------------------------
 USER grafana
-EXPOSE 3001
+VOLUME ["/var/lib/grafana"]
+EXPOSE 3000
 
-# Salud del contenedor
-HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
-    CMD wget --spider http://localhost:3001/api/health || exit 1
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s \
+    CMD wget --no-verbose --tries=1 --spider http://localhost:3000/api/health || exit 1
 
-# Evita que el contenedor gane privilegios root
 ENTRYPOINT ["/run.sh"]
