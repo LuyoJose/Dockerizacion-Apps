@@ -35,6 +35,9 @@ services:
     container_name: postgres_service
     restart: unless-stopped
     read_only: true
+    tmpfs:
+      - /var/run/postgresql
+      - /tmp
     environment:
       POSTGRES_USER: appuser
       POSTGRES_PASSWORD: AppUserPass123
@@ -67,6 +70,8 @@ services:
     container_name: mongo_service
     restart: unless-stopped
     read_only: true
+    tmpfs:
+      - /tmp
     ports:
       - "27017:27017"
     volumes:
