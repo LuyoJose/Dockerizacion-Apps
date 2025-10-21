@@ -3,15 +3,19 @@
 # ===============================
 FROM eclipse-temurin:21-jdk AS builder
 
-# Crear usuario no root para compilar (sintaxis para Debian)
+# Crear usuario no root para compilar
 RUN groupadd -r builder && useradd -r -g builder builder
-USER builder
 
+# Crear el directorio y dar permisos antes de cambiar de usuario
+RUN mkdir -p /home/builder/app && chown -R builder:builder /home/builder
+
+USER builder
 WORKDIR /home/builder/app
 
 # Copiar archivos necesarios para resolver dependencias
 COPY --chown=builder:builder mvnw pom.xml ./
 COPY --chown=builder:builder .mvn/ .mvn/
+
 RUN ./mvnw dependency:go-offline -B
 
 # Copiar el código fuente y compilar
@@ -23,14 +27,17 @@ RUN ./mvnw clean package -DskipTests
 # ===============================
 FROM eclipse-temurin:21-jre AS runtime
 
-# Crear usuario no root para ejecución (también versión Debian)
+# Crear usuario no root para ejecución
 RUN groupadd -r app && useradd -r -g app app
-USER app
 
+# Crear carpeta de trabajo con permisos correctos
+RUN mkdir -p /app && chown -R app:app /app
+
+USER app
 WORKDIR /app
 
 # Copiar solo el artefacto final desde el builder
-COPY --from=builder --chown=app:app /home/builder/app/target/*.jar app.jar
+COPY --from=builder --chown=app:app /home/builder/app/target/demo-0.0.1-SNAPSHOT.jar app.jar
 
 # Configurar entorno
 ENV JAVA_OPTS="-Xms256m -Xmx512m"

@@ -5,14 +5,20 @@ services:
   redis:
     image: redis:8.2-alpine
     container_name: redis_service
+    command: >
+      redis-server
+        --bind 0.0.0.0
+        --appendonly yes
+        --aclfile /usr/local/etc/redis/redis.conf
     restart: unless-stopped
     read_only: true
     ports:
       - "6379:6379"
     volumes:
+      - ./redis/redis.conf:/usr/local/etc/redis/users.acl
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "-u", "redis://appuser:AppUserPass123@localhost:6379", "ping"]
+      test: ["CMD", "redis-cli", "-a", "AppUserPass123", "ping"]
       interval: 15s
       timeout: 3s
       retries: 3
@@ -142,6 +148,8 @@ services:
     container_name: springboot_service
     restart: unless-stopped
     read_only: true
+    tmpfs:
+      - /tmp
     environment:
       SPRING_PROFILES_ACTIVE: prod
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/appdb
@@ -180,13 +188,70 @@ services:
       - frontend
       - monitoring
 
+# 📊 Prometheus
+  prometheus:
+    build:
+      context: ./prometheus
+      dockerfile: Dockerfile.prometheus
+    container_name: prometheus_service
+    restart: unless-stopped
+    read_only: true
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - monitoring
+
+  # 📈 Grafana
+  grafana:
+    build:
+      context: ./grafana
+      dockerfile: Dockerfile.grafana
+    container_name: grafana_service
+    restart: unless-stopped
+    read_only: true
+    ports:
+      - "3010:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - monitoring
+
+  # 🔁 Watchtower (auto-updates)
+  watchtower:
+    image: containrrr/watchtower
+    container_name: watchtower
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      WATCHTOWER_CLEANUP: "true"
+      WATCHTOWER_LABEL_ENABLE: "true"
+      WATCHTOWER_SCHEDULE: "0 0 * * *" # Ejecuta cada medianoche
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+
 # 🔗 Redes
 networks:
   backend:
-    internal: true
+    #internal: true
   frontend:
   monitoring:
-    internal: true
+    #internal: true
 
 # 💾 Volúmenes
 volumes:
@@ -195,3 +260,10 @@ volumes:
   mongo_data:
   prometheus_data:
   grafana_data:
+
+# 🔐 Secretos
+secrets:
+  db_user:
+    file: ./secrets/db_user.txt
+  db_password:
+    file: ./secrets/db_password.txt
