@@ -1,19 +1,23 @@
-# Dockerfile.redis
-FROM redis:8.2-alpine
+# redis/Dockerfile
+FROM redis:7.4-alpine
+
+# Crea el directorio de configuración
+RUN mkdir -p /usr/local/etc/redis && chown -R redis:redis /usr/local/etc/redis
 
 # Copia configuración personalizada
 COPY redis.conf /usr/local/etc/redis/redis.conf
+COPY users.acl /usr/local/etc/redis/users.acl
 RUN chown redis:redis /usr/local/etc/redis/redis.conf
 
-# Usar usuario no root
+# Usa usuario no root
 USER redis
 
 # Exponer puerto
 EXPOSE 6379
 
-# Healthcheck con autenticación
-HEALTHCHECK --interval=15s --timeout=3s --start-period=10s \
-    CMD redis-cli -u redis://appuser:AppUserPass123@localhost:6379 ping || exit 1
+# Healthcheck (producción)
+HEALTHCHECK --interval=15s --timeout=3s --retries=3 \
+    CMD redis-cli -u redis://appuser:Ultra$AppP@ss#98!@localhost:6379 ping || exit 1
 
 # Comando de arranque
 CMD ["redis-server", "/usr/local/etc/redis/redis.conf"]

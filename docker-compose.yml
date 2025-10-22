@@ -3,22 +3,19 @@ version: "3.9"
 services:
   # 🧠 Redis
   redis:
-    image: redis:8.2-alpine
+    image: redis:7.4-alpine
     container_name: redis_service
-    command: >
-      redis-server
-        --bind 0.0.0.0
-        --appendonly yes
-        --aclfile /usr/local/etc/redis/redis.conf
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
     restart: unless-stopped
     read_only: true
     ports:
       - "6379:6379"
     volumes:
-      - ./redis/redis.conf:/usr/local/etc/redis/users.acl
+      - ./redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+      - ./redis/users.acl:/usr/local/etc/redis/users.acl:ro
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "AppUserPass123", "ping"]
+      test: ["CMD", "redis-cli", "-u", "redis://appuser:UltraSecurePassword123@localhost:6379", "ping"]
       interval: 15s
       timeout: 3s
       retries: 3

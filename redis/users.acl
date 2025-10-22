@@ -1,0 +1,2 @@
+user default on >AppUserPass123 ~* +ping +info +client +hello
+user appuser on >UltraSecurePassword123 ~* +@all
