@@ -1,9 +1,17 @@
-# Dockerfile.mongo
+# mongo/Dockerfile.mongo
 FROM mongo:7.0
 
-# Copia archivo de configuración
+# Copiar archivo de configuración
 COPY mongod.conf /etc/mongod.conf
 RUN chown mongodb:mongodb /etc/mongod.conf
+
+# Crear directorios y ajustar permisos
+RUN mkdir -p /data/db /data/configdb /var/log/mongodb && \
+    chown -R mongodb:mongodb /data /var/log/mongodb
+
+# Copiar scripts de inicialización
+COPY init/ /docker-entrypoint-initdb.d/
+RUN chown -R mongodb:mongodb /docker-entrypoint-initdb.d/
 
 # Volúmenes
 VOLUME ["/data/db", "/data/configdb"]
@@ -12,8 +20,8 @@ VOLUME ["/data/db", "/data/configdb"]
 EXPOSE 27017
 
 # Healthcheck con autenticación
-HEALTHCHECK --interval=15s --timeout=5s --start-period=10s \
-    CMD mongo -u appuser -p AppUserPass123 --authenticationDatabase appdb --quiet --eval "db.adminCommand('ping')" || exit 1
+HEALTHCHECK --interval=20s --timeout=5s --start-period=15s \
+    CMD mongosh -u appuser -p AppUserPass123 --authenticationDatabase appdb --quiet --eval "db.adminCommand('ping')" || exit 1
 
 # Usuario no root
 USER mongodb

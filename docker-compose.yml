@@ -79,9 +79,10 @@ services:
       - "27017:27017"
     volumes:
       - mongo_data:/data/db
+      - ./mongo/init:/docker-entrypoint-initdb.d
     healthcheck:
       test: ["CMD", "mongosh", "-u", "appuser", "-p", "AppUserPass123", "--authenticationDatabase", "appdb", "--quiet", "--eval", "db.adminCommand('ping')"]
-      interval: 15s
+      interval: 20s
       timeout: 5s
       retries: 3
     deploy:
